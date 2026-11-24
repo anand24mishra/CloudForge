@@ -1,0 +1,31 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: example-node
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/OWNER/CloudForge.git
+    targetRevision: main
+    path: charts/cloudforge-app
+    helm:
+      values: |
+        nameOverride: example-node
+        fullnameOverride: example-node
+        image:
+          repository: ghcr.io/OWNER/example-node
+          tag: replace-me
+        service:
+          port: 8080
+        containerPort: 8080
+        ingress:
+          enabled: true
+          host: example-node.sslip.io
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: cloudforge
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

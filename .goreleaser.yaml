@@ -1,0 +1,21 @@
+version: 2
+before:
+  hooks:
+    - go mod tidy
+builds:
+  - id: cloudforge
+    main: ./cmd/cloudforge
+    binary: cloudforge
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+  - id: cloudforge-api
+    main: ./cmd/api
+    binary: cloudforge-api
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+archives:
+  - formats: [tar.gz]
+checksum:
+  name_template: checksums.txt
+changelog:
+  sort: asc

@@ -1,0 +1,70 @@
+name: CloudForge CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+          cache: true
+      - uses: golangci/golangci-lint-action@v7
+        with:
+          version: v2.4
+      - run: go test -race ./...
+      - run: go vet ./...
+      - name: Check formatting
+        shell: bash
+        run: test -z "$(gofmt -l .)"
+
+  chart:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+      - run: helm lint charts/cloudforge-app
+      - run: helm template demo charts/cloudforge-app --namespace cloudforge
+
+  examples:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - name: node
+            working-directory: examples/node-app
+          - name: python
+            working-directory: examples/python-app
+          - name: go
+            working-directory: examples/go-app
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test Node
+        if: matrix.name == 'node'
+        working-directory: ${{ matrix.working-directory }}
+        run: npm ci && npm test
+      - name: Test Python
+        if: matrix.name == 'python'
+        working-directory: ${{ matrix.working-directory }}
+        run: python -m pip install -r requirements.txt && pytest
+      - name: Test Go
+        if: matrix.name == 'go'
+        working-directory: ${{ matrix.working-directory }}
+        run: go test ./...
+      - uses: docker/setup-buildx-action@v3
+      - name: Build Docker examples
+        if: matrix.name != 'go'
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.working-directory }}
+          push: false
+          tags: cloudforge/example-${{ matrix.name }}:ci

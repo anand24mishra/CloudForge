@@ -1,0 +1,28 @@
+# Go
+/cloudforge
+/cloudforge-api
+/bin/
+*.test
+coverage.out
+
+# Local state and generated output
+.cloudforge/
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+generated/
+
+# Secrets and credentials
+.env
+.env.*
+!.env.example
+kubeconfig*
+*.key
+*.pem
+
+# OS/editor
+.DS_Store
+__pycache__/
+.idea/
+.vscode/

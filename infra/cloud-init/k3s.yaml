@@ -1,0 +1,25 @@
+#cloud-config
+package_update: true
+packages:
+  - curl
+  - jq
+  - git
+  - ca-certificates
+write_files:
+  - path: /etc/cloudforge/k3s-token
+    permissions: '0600'
+    content: '${k3s_token}'
+  - path: /usr/local/sbin/cloudforge-bootstrap
+    permissions: '0755'
+    content: |
+      #!/usr/bin/env bash
+      set -Eeuo pipefail
+      export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+      /usr/local/bin/helm version >/dev/null 2>&1 || curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+      /opt/cloudforge/infra/bootstrap/install.sh
+runcmd:
+  - mkdir -p /opt/cloudforge/infra/bootstrap /etc/cloudforge
+  - curl -sfL https://get.k3s.io | K3S_TOKEN_FILE=/etc/cloudforge/k3s-token sh -s - server --write-kubeconfig-mode 0644 --disable servicelb
+  - until test -f /etc/rancher/k3s/k3s.yaml; do sleep 5; done
+  - git clone --depth 1 '${cloudforge_repo_url}' /opt/cloudforge
+  - /usr/local/sbin/cloudforge-bootstrap
