@@ -141,7 +141,9 @@ func (s *Server) logs(w http.ResponseWriter, r *http.Request) {
 	offset := 0
 	for {
 		for _, line := range logs[offset:] {
-			fmt.Fprintf(w, "data: %s\n\n", strings.ReplaceAll(line, "\n", " "))
+			if _, err := fmt.Fprintf(w, "data: %s\n\n", strings.ReplaceAll(line, "\n", " ")); err != nil {
+				return
+			}
 		}
 		offset = len(logs)
 		if canFlush {

@@ -111,7 +111,7 @@ func (c *Client) Logs(ctx context.Context, app string, follow bool, out io.Write
 	if err != nil {
 		return err
 	}
-	defer stream.Close()
+	defer func() { _ = stream.Close() }()
 	_, err = io.Copy(out, stream)
 	return err
 }

@@ -91,9 +91,13 @@ func newInitCommand() *cobra.Command {
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(cmd.OutOrStdout(), "detected %s; generated:\n", result.Stack)
+		if _, err := fmt.Fprintf(cmd.OutOrStdout(), "detected %s; generated:\n", result.Stack); err != nil {
+			return err
+		}
 		for _, file := range files {
-			fmt.Fprintln(cmd.OutOrStdout(), "-", file)
+			if _, err := fmt.Fprintln(cmd.OutOrStdout(), "-", file); err != nil {
+				return err
+			}
 		}
 		return nil
 	}
@@ -199,8 +203,8 @@ func newRollbackCommand(options *cliOptions) *cobra.Command {
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(cmd.OutOrStdout(), "rolled back %s\n", deployment.Name)
-		return nil
+		_, err = fmt.Fprintf(cmd.OutOrStdout(), "rolled back %s\n", deployment.Name)
+		return err
 	}}
 }
 
