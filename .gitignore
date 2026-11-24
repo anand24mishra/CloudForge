@@ -20,6 +20,10 @@ generated/
 kubeconfig*
 *.key
 *.pem
+*.log
+__pycache__/
+.pytest_cache/
+.venv/
 
 # OS/editor
 .DS_Store

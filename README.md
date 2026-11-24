@@ -1,103 +1,63 @@
 # CloudForge
 
-CloudForge is a small, open-source PaaS for deploying an existing Git repository to Kubernetes. It detects common application stacks, chooses an existing Dockerfile or Cloud Native Buildpacks, generates deployment assets, and provides a GitHub Actions → GHCR → Argo CD GitOps path.
+CloudForge is a small Go-based PaaS that turns a Git repository into a Kubernetes deployment. It detects the application stack, builds a container with Docker or Cloud Native Buildpacks, and deploys through Helm. The production path uses GitHub Actions, GHCR, and Argo CD.
 
-It is intentionally designed as a resume project: the local `kind` workflow is reproducible, while the OCI Terraform and k3s path is ready for a live demo without hiding the operational trade-offs.
+## Highlights
 
-## What is implemented
+- Stack detection for Dockerfile, Node.js, Python, Go, Java, and Buildpacks fallback
+- One generic Helm chart with probes, resource limits, HPA, ingress, and rollback
+- Multi-architecture CI images with Trivy scanning and GHCR publishing
+- Terraform + cloud-init for a k3s cluster on an Oracle Cloud VM
+- Prometheus, Grafana, Loki, cert-manager, and Sealed Secrets bootstrap
+- Local `kind` workflow for a reproducible demo without cloud credentials
 
-- Go CLI: `init`, `deploy`, `status`, `logs`, `rollback`, and `destroy`.
-- Go HTTP API with deployment records, status, and an SSE log endpoint.
-- Stack detection for Dockerfile, Node, Python, Go, Java, and an explicit Buildpacks fallback.
-- Embedded generators for a Dockerfile, GitHub Actions workflow, and Helm values.
-- Generic Helm chart with Deployment, Service, Ingress, probes, resource limits, and HPA.
-- Example Node, Flask, and Go applications, including a Go app that demonstrates the Buildpacks path.
-- CI and release workflows with tests, multi-architecture builds, Trivy, GHCR, and GoReleaser.
-- Argo CD app-of-apps and deploy-config layout.
-- Terraform scaffolding for a local kind cluster and an Oracle Cloud Always Free A1 k3s VM.
-- Bootstrap manifests for Argo CD, cert-manager, kube-prometheus-stack, Loki, and Sealed Secrets.
+## Quick start
 
-The project never pushes to GitHub automatically. `cloudforge init` writes to a local working copy. The generated CI workflow only becomes active after you commit it and configure the relevant GitHub secrets and repository permissions yourself.
-
-## Quick start on kind
-
-Prerequisites: Go, Docker, kind, kubectl, and Helm.
+Requirements: Go, Docker, kind, kubectl, and Helm.
 
 ```sh
 make kind-up
 make build
-./bin/cloudforge init ./examples/node-app --output-dir /tmp/cloudforge-node
-helm upgrade --install node-app charts/cloudforge-app \
-  --namespace cloudforge --create-namespace \
-  --set nameOverride=node-app \
-  --set fullnameOverride=node-app \
-  --set image.repository=cloudforge-node \
-  --set image.tag=local \
-  --set image.pullPolicy=IfNotPresent \
-  --set service.port=8080 \
-  --set containerPort=8080
+./bin/cloudforge deploy examples/node-app --context kind-cloudforge
+APP=node-app SERVICE=node-app ./scripts/smoke-test.sh
 ```
 
-For a full local image flow:
+Inspect the generated deployment files without changing an app repository:
 
 ```sh
-docker build -t cloudforge-node:local examples/node-app
-kind load docker-image cloudforge-node:local --name cloudforge
-helm upgrade --install node-app charts/cloudforge-app \
-  --namespace cloudforge --create-namespace \
-  --set nameOverride=node-app --set fullnameOverride=node-app \
-  --set image.repository=cloudforge-node --set image.tag=local \
-  --set image.pullPolicy=IfNotPresent --set service.port=8080 --set containerPort=8080
-kubectl -n cloudforge port-forward svc/node-app 8080:8080
-curl http://127.0.0.1:8080/healthz
+./bin/cloudforge detect examples/node-app
+./bin/cloudforge init examples/node-app --output-dir /tmp/cloudforge-node
 ```
 
-The generated files can be inspected before they are copied into an application repository:
-
-```sh
-./bin/cloudforge detect ./examples/node-app
-./bin/cloudforge init ./examples/node-app --output-dir ./generated/node-app
-./bin/cloudforge deploy ./examples/go-app --buildpacks --context kind-cloudforge
-```
-
-## CLI
+Useful commands:
 
 ```text
-cloudforge init <repo>       Detect and generate deployment assets locally
-cloudforge deploy <repo>     Build/load and deploy to the current Kubernetes context
-cloudforge status [app]      Show Deployment and pod health
+cloudforge init <repo>       Generate Dockerfile, workflow, and Helm values
+cloudforge deploy <repo>     Build and deploy with Helm
+cloudforge status <app>      Show Deployment and pod health
 cloudforge logs <app>        Stream application logs
-cloudforge rollback <app>    Roll back the Deployment to its previous revision
-cloudforge destroy <app>     Delete the Helm release from the current cluster
+cloudforge rollback <app>    Restore the previous Deployment revision
+cloudforge destroy <app>     Remove the Helm release
 ```
 
-`repo` may be a local path or a Git URL. Git URLs are cloned into a temporary directory and are never pushed by the CLI.
+## Architecture
 
-## GitOps path
-
-1. Generated workflow runs tests and lint, builds `linux/amd64` and `linux/arm64`, scans with Trivy, and publishes to GHCR.
-2. The workflow updates an image tag in a separately managed `deploy-config` repository when `DEPLOY_CONFIG_REPO` and its token are configured.
-3. Argo CD watches `deploy-config/apps/` and syncs the generic chart into the cluster.
-
-The deploy-config repository is represented locally under [`deploy-config/`](deploy-config/) as an example layout. Keep real Sealed Secrets and credentials outside this repository.
-
-## Oracle Cloud demo path
-
-The OCI files stay un-applied until you explicitly run Terraform. Review [`infra/terraform/oci/variables.tf`](infra/terraform/oci/variables.tf), configure a remote state bucket, and set a budget alert in the OCI console first. The included cloud-init keeps the A1 shape at 2 OCPUs / 12 GB by default and installs k3s plus the bootstrap script.
-
-```sh
-cd infra/terraform/oci
-terraform init
-terraform plan
-# Apply only after reviewing the plan and confirming the tenancy/budget settings.
-terraform apply
+```text
+Git repo → CloudForge detector/generator → GitHub Actions → GHCR
+                                                    ↓
+                                      deploy-config → Argo CD → Helm
+                                                                  ↓
+                                                   k3s/kind → Traefik → app
 ```
 
-See [`docs/runbook.md`](docs/runbook.md) for the kind and OCI runbooks, and [`docs/architecture.md`](docs/architecture.md) for the system design.
+The implementation is organized around the CLI/API, detector and generators, generic chart, examples, GitOps config, and infrastructure modules. See [`docs/architecture.md`](docs/architecture.md) and [`docs/runbook.md`](docs/runbook.md) for the full design and demo steps.
 
-## Safety and cost notes
+## Safety
 
-- No GitHub push, PR, tag, or release is performed by this local project.
-- No cloud resource is created by `make`, the CLI, or tests.
-- Never commit `.env`, kubeconfigs, OCI keys, or plain Kubernetes Secrets.
-- Oracle Always Free capacity and quotas can change; verify the current OCI Free Tier page and set a budget alert before provisioning.
+CloudForge never pushes to GitHub from the CLI or API. `init` writes generated files locally; the generated deploy-config push is an explicit GitHub Actions opt-in that requires repository secrets. No credentials or plain Kubernetes Secrets belong in this repository.
+
+The OCI module is plan-first. Review the current Oracle Always Free limits, set a budget alert, and inspect `terraform plan` before applying it.
+
+## License
+
+MIT
